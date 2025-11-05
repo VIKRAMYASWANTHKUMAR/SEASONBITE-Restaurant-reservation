@@ -2,51 +2,24 @@ let userId = null, tableId = null, orderId = null;
 let order = [];
 let loggedIn = false;
 
-// Show signup form
+/* ============================
+   AUTHENTICATION
+============================ */
 function showSignup() {
   document.getElementById("loginBox").style.display = "none";
   document.getElementById("signupBox").style.display = "block";
 }
-
-// Show login form
 function showLogin() {
   document.getElementById("signupBox").style.display = "none";
   document.getElementById("loginBox").style.display = "block";
 }
-
-// Open auth/login box
 function openAuthBox() {
   document.getElementById("authContainer").style.display = "flex";
-  if (loggedIn) {
-    document.getElementById("loginBox").style.display = "none";
-    document.getElementById("signupBox").style.display = "none";
-    if (!document.getElementById("userDetailsBox")) {
-      let detailsBox = document.createElement('div');
-      detailsBox.id = "userDetailsBox";
-      detailsBox.className = "auth-box";
-      detailsBox.innerHTML = `<h2>User Details</h2>
-        <p>Welcome, User ${userId || ""}!</p>
-        <button onclick="closeAuthBox()">Close</button>`;
-      document.getElementById("authContainer").appendChild(detailsBox);
-    } else {
-      document.getElementById("userDetailsBox").style.display = "block";
-    }
-  } else {
-    showLogin();
-    if (document.getElementById("userDetailsBox")) {
-      document.getElementById("userDetailsBox").style.display = "none";
-    }
-  }
 }
-
 function closeAuthBox() {
   document.getElementById("authContainer").style.display = "none";
-  if (document.getElementById("userDetailsBox")) {
-    document.getElementById("userDetailsBox").style.display = "none";
-  }
 }
 
-// Signup handler
 function handleSignup() {
   let name = document.getElementById("signupName").value;
   let phone = document.getElementById("signupPhone").value;
@@ -56,223 +29,218 @@ function handleSignup() {
     return;
   }
   fetch("http://localhost:5000/register", {
-      method: "POST", headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({name, phone, password})
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({name, phone, password})
   }).then(r=>r.json()).then(data=>{
-      alert(data.message);
-      showLogin();
+    alert(data.message);
+    showLogin();
   });
 }
 
-// Login handler
 function handleLogin() {
   let phone = document.getElementById("loginPhone").value;
   let password = document.getElementById("loginPassword").value;
   fetch("http://localhost:5000/login", {
-      method: "POST", headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({phone, password})
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({phone, password})
   }).then(r=>r.json()).then(data=>{
     if(data.success){
       userId = data.user.CUSTOMER_ID;
       loggedIn = true;
       document.getElementById("authContainer").style.display="none";
+      document.getElementById("loginBtn").textContent = "Profile";
+      document.getElementById("loginBtn").onclick = openProfile;
+      alert("Welcome, " + data.user.NAME + "!");
     } else {
       alert("Invalid login!");
     }
   });
 }
 
-// Book table handler (ALWAYS shows 5 tables, demo/fallback)
+/* ============================
+   TABLE RESERVATION
+============================ */
 document.getElementById("bookTableBtn").onclick = function() {
-  if (!loggedIn) {
-    alert("Please login to book a table.");
+  if (!loggedIn) { 
+    alert("Please login first!");
     openAuthBox();
     return;
   }
-  // Show only reservation overlay, hide all others
-  document.getElementById("reservationSection").style.display = "block";
-  document.getElementById("menuPopup").style.display = "none";
-  document.getElementById("orderSection").style.display = "none";
-  document.getElementById("paymentSection").style.display = "none";
-
-  let sel = document.getElementById("resTable");
-  sel.innerHTML = '<option value="">Select a Table</option>';
-  let dummyTables = [
-    {TABLE_ID: 1, CAPACITY: 2},
-    {TABLE_ID: 2, CAPACITY: 4},
-    {TABLE_ID: 3, CAPACITY: 2},
-    {TABLE_ID: 4, CAPACITY: 6},
-    {TABLE_ID: 5, CAPACITY: 4}
-  ];
-  dummyTables.forEach(t => {
-    sel.innerHTML += `<option value='${t.TABLE_ID}'>Table ${t.TABLE_ID} - ${t.CAPACITY} seats</option>`;
-  });
-  // Uncomment to use backend instead of demo:
-  /*
   fetch("http://localhost:5000/tables/available").then(r=>r.json())
-    .then(tables=> {
-      sel.innerHTML = '<option value="">Select a Table</option>';
-      tables.forEach(t => {
-        sel.innerHTML += `<option value='${t.TABLE_ID}'>Table ${t.TABLE_ID} - ${t.CAPACITY} seats</option>`;
+  .then(tables=>{
+    let sel=document.getElementById("resTable");
+    sel.innerHTML='<option value="">Select a Table</option>';
+    if(tables.length === 0){
+      sel.innerHTML='<option value="">No tables available</option>';
+    } else {
+      tables.forEach(t=>{
+        sel.innerHTML += `<option value="${t.TABLE_ID}">Table ${t.TABLE_ID} - ${t.CAPACITY} seats</option>`;
       });
-    });
-  */
+    }
+  });
+  document.getElementById("reservationSection").style.display="block";
+  document.getElementById("menuPopup").style.display="none";
+  document.getElementById("orderSection").style.display="none";
+  document.getElementById("paymentSection").style.display="none";
 };
 
-// Menu handler: scrollable, compact card with qty controls and price
-document.getElementById("menuBtn").onclick = function() {
-  document.getElementById("menuPopup").style.display = "block";
-  document.getElementById("reservationSection").style.display = "none";
-  document.getElementById("orderSection").style.display = "none";
-  document.getElementById("paymentSection").style.display = "none";
-  fetch("http://localhost:5000/menu").then(r=>r.json())
-  .then(items=> {
-    let m = document.getElementById("menuItems"); m.innerHTML="";
-    items.forEach(d => {
-      let existing = order.find(o => o.menu_item_id === d.MENU_ITEM_ID);
-      let qty = existing ? existing.quantity : 0;
-      m.innerHTML += `
-        <div class="menu-item-row">
-          <span class="menu-name">${d.DISH_NAME}</span>
-          <span class="menu-price">₹${d.PRICE}</span>
-          <div class="menu-qty-controls">
-            <button class="qty-btn" onclick="changeQty(${d.MENU_ITEM_ID}, -1, ${d.PRICE})">-</button>
-            <input type="text" id="qty_${d.MENU_ITEM_ID}" class="qty-input" data-price="${d.PRICE}" value="${qty}" readonly>
-            <button class="qty-btn" onclick="changeQty(${d.MENU_ITEM_ID}, 1, ${d.PRICE})">+</button>
-          </div>
-        </div>
-      `;
-    });
+document.getElementById("confirmReservation").onclick = function(){
+  const date=document.getElementById("resDate").value;
+  const time=document.getElementById("resTime").value;
+  const datetime=`${date} ${time}`;
+  tableId=document.getElementById("resTable").value;
+  if(!tableId){ alert("Select a table"); return; }
+
+  fetch("http://localhost:5000/reserve", {
+    method:"POST", headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({tableid:tableId, customerid:userId, datetime})
+  }).then(r=>r.json()).then(d=>{
+    alert(d.message);
+    document.getElementById("reservationSection").style.display="none";
+    document.getElementById("menuPopup").style.display="block";
   });
 };
 
-window.changeQty = function(id, delta, price = null) {
+/* ============================
+   MENU & ORDER
+============================ */
+document.getElementById("menuBtn").onclick = function() {
+  fetch("http://localhost:5000/menu").then(r=>r.json())
+  .then(items=>{
+    let m=document.getElementById("menuItems");
+    m.innerHTML="";
+    items.forEach(d=>{
+      let qty=0;
+      m.innerHTML += `
+      <div class="menu-item-row">
+        <span class="menu-name">${d.DISH_NAME}</span>
+        <span class="menu-price">₹${d.PRICE}</span>
+        <div class="menu-qty-controls">
+          <button class="qty-btn" onclick="changeQty(${d.MENU_ITEM_ID}, -1, ${d.PRICE})">-</button>
+          <input type="text" id="qty_${d.MENU_ITEM_ID}" class="qty-input" value="${qty}" readonly>
+          <button class="qty-btn" onclick="changeQty(${d.MENU_ITEM_ID}, 1, ${d.PRICE})">+</button>
+        </div>
+      </div>`;
+    });
+  });
+  document.getElementById("menuPopup").style.display="block";
+};
+
+
+function changeQty(id, delta, price) {
   let input = document.getElementById(`qty_${id}`);
-  let val = parseInt(input.value, 10);
-  let newVal = (isNaN(val) ? 0 : val) + delta;
+  let val = parseInt(input.value) || 0;
+  let newVal = val + delta;
   if(newVal < 0) newVal = 0;
   input.value = newVal;
   let idx = order.findIndex(o => o.menu_item_id === id);
-  if(newVal === 0 && idx !== -1) {
-    order.splice(idx, 1);
-  } else if(idx !== -1) {
-    order[idx].quantity = newVal;
-  } else if(newVal > 0) {
-    let dishPrice = price || parseFloat(input.getAttribute('data-price')) || 0;
-    order.push({ menu_item_id: id, quantity: newVal, price: dishPrice });
-  }
-  updateOrderSection(); // Update total automatically
-};
-
-function closeMenu() {
-  document.getElementById("menuPopup").style.display = "none";
-}
-
-function proceedToOrder(){
-  if (order.length === 0) {
-    alert("Please select at least one dish before proceeding.");
-    return;
-  }
-  document.getElementById("orderSection").style.display = "block";
-  document.getElementById("menuPopup").style.display = "none";
-  document.getElementById("reservationSection").style.display = "none";
-  document.getElementById("paymentSection").style.display = "none";
+  if(idx !== -1 && newVal === 0) order.splice(idx, 1);
+  else if(idx !== -1) order[idx].quantity = newVal;
+  else if(newVal > 0) order.push({ menu_item_id:id, quantity:newVal, price:price });
   updateOrderSection();
 }
 
 function updateOrderSection() {
-  let os = document.getElementById("orderSummary");
-  if (!os) return;
-  let total = 0;
-  os.innerHTML = order.map(one => {
-    let line = `${one.quantity} x ${one.menu_item_id} (₹${one.price * one.quantity})`;
-    total += one.price * one.quantity;
-    return line;
-  }).join("<br>");
+  let os=document.getElementById("orderSummary");
+  let total=0;
+  os.innerHTML="";
+  order.forEach(o=>{
+    os.innerHTML += `<p>${o.quantity}x Item ${o.menu_item_id} - ₹${o.price*o.quantity}</p>`;
+    total += o.price*o.quantity;
+  });
   os.innerHTML += `<hr><b>Total: ₹${total}</b>`;
-  let payInput = document.getElementById("payAmount");
-  if(payInput) payInput.value = total > 0 ? total : "";
+  document.getElementById("payAmount").value=total;
 }
 
-document.getElementById("confirmReservation").onclick = function() {
-  const date = document.getElementById("resDate").value;
-  const time = document.getElementById("resTime").value;
-  tableId = document.getElementById("resTable").value;
+function proceedToOrder(){
+  if(order.length === 0){ alert("Select at least one dish."); return; }
+  document.getElementById("orderSection").style.display="block";
+  document.getElementById("menuPopup").style.display="none";
+}
 
-  if (!date || !time || !tableId) {
-    alert("Please fill all reservation details.");
-    return;
-  }
-  if(!userId) { 
-    alert("Login first!"); 
-    return; 
-  }
-  // This is where you'd confirm the reservation with backend.
-  alert("Reserved! Now add menu items."); 
-  document.getElementById("reservationSection").style.display = "none";
-  document.getElementById("menuPopup").style.display = "block";
-  document.getElementById("orderSection").style.display = "none";
-  document.getElementById("paymentSection").style.display = "none";
-};
-
+/* ============================
+   PAYMENT & RECEIPT
+============================ */
 function payNow(){
-  const date = document.getElementById("resDate").value;
-  const time = document.getElementById("resTime").value;
-  const tableSel = document.getElementById("resTable").value;
+  if(order.length === 0){ alert("No items selected!"); return; }
 
-  if (!tableId || !date || !time || !tableSel) {
-    alert("Please complete table reservation first before proceeding to payment.");
-    document.getElementById("reservationSection").style.display = "block";
-    document.getElementById("menuPopup").style.display = "none";
-    document.getElementById("orderSection").style.display = "none";
-    document.getElementById("paymentSection").style.display = "none";
-    let sel = document.getElementById("resTable");
-    sel.innerHTML = '<option value="">Select a Table</option>';
-    let dummyTables = [
-      {TABLE_ID: 1, CAPACITY: 2},
-      {TABLE_ID: 2, CAPACITY: 4},
-      {TABLE_ID: 3, CAPACITY: 2},
-      {TABLE_ID: 4, CAPACITY: 6},
-      {TABLE_ID: 5, CAPACITY: 4}
-    ];
-    dummyTables.forEach(t => {
-      sel.innerHTML += `<option value='${t.TABLE_ID}'>Table ${t.TABLE_ID} - ${t.CAPACITY} seats</option>`;
-    });
-    return;
-  }
-  if (order.length === 0) {
-    alert("Please select at least one dish to pay.");
-    return;
-  }
-  document.getElementById("paymentSection").style.display="block";
-  document.getElementById("reservationSection").style.display = "none";
-  document.getElementById("menuPopup").style.display = "none";
-  document.getElementById("orderSection").style.display = "none";
-  updateOrderSection();
+  fetch("http://localhost:5000/order", {
+    method:"POST", headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({customer_id:userId, table_id:tableId, items:order})
+  }).then(r=>r.json()).then(data=>{
+    orderId = data.order_id;
+    document.getElementById("paymentSection").style.display="block";
+    document.getElementById("orderSection").style.display="none";
+  });
 }
 
 function confirmPay(){
-  const amt = document.getElementById("payAmount").value;
-  const method = document.getElementById("payMethod").value;
-  if (!amt || amt <= 0) {
-    alert("Amount must be valid and non-empty.");
-    return;
-  }
-  if (!method) {
-    alert("Select a payment method.");
-    return;
-  }
-  // Simulate successful payment
-  alert("Payment Successful!");
+  const amt=document.getElementById("payAmount").value;
+  const method=document.getElementById("payMethod").value;
+  if(!amt || amt<=0){ alert("Invalid amount"); return; }
+  if(!method){ alert("Select a payment method"); return; }
+
+  fetch("http://localhost:5000/payment", {
+    method:"POST", headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({order_id:orderId, amount:amt, method})
+  }).then(r=>r.json()).then(res=>{
+    if(res.success){
+      showReceipt(orderId);
+    }
+  });
 }
 
-function scrollToAboutUs() {
-  document.getElementById("aboutUsSection").scrollIntoView({behavior: "smooth"});
+function showReceipt(orderId){
+  fetch(`http://localhost:5000/receipt/${orderId}`).then(r=>r.json()).then(data=>{
+    let details=data.details.map(d=>`<li>${d.QUANTITY}x ${d.DISH_NAME} - ₹${d.PRICE*d.QUANTITY}</li>`).join('');
+    const html=`<div class='receipt-card'>
+      <h3>Order Receipt</h3>
+      <p><b>Table:</b> ${data.details[0].TABLE_ID}</p>
+      <ul>${details}</ul>
+      <p><b>Total:</b> ₹${data.total}</p>
+      <button onclick="closeReceipt()">Close</button>
+    </div>`;
+    document.body.insertAdjacentHTML('beforeend', html);
+  });
 }
 
-// User details dropdown (optional, not part of updated flow)
-function toggleUserDetails() {
-  const details = document.getElementById("userDetails");
-  if(details.style.display==="block") details.style.display="none";
-  else { details.style.display="block"; }
+function closeReceipt(){
+  const el=document.querySelector('.receipt-card');
+  if(el) el.remove();
+}
+
+/* ============================
+   USER PROFILE SECTION
+============================ */
+function openProfile() {
+  fetch(`http://localhost:5000/profile/${userId}`).then(r=>r.json()).then(data=>{
+    let container=document.getElementById("profileDetails");
+    container.innerHTML="";
+    if(data.length === 0){
+      container.innerHTML="<p>No bookings found.</p>";
+    } else {
+      data.forEach(o=>{
+        container.innerHTML += `
+          <div>
+            <p><b>Order ID:</b> ${o.ORDER_ID}</p>
+            <p><b>Table:</b> ${o.TABLE_ID}</p>
+            <p><b>Date:</b> ${new Date(o.ORDER_DATE).toLocaleString()}</p>
+            <p><b>Status:</b> ${o.STATUS}</p>
+          </div>`;
+      });
+    }
+    document.getElementById("profileSection").style.display="block";
+  });
+}
+function closeProfile() {
+  document.getElementById("profileSection").style.display="none";
+}
+
+/* ============================
+   UTILITIES
+============================ */
+function closeMenu() {
+  document.getElementById("menuPopup").style.display="none";
 }
